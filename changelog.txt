@@ -1,0 +1,37 @@
+---------------------------------------------------------------------------------------------------
+Version: 0.1.7
+Date: 10. 08. 2019
+  Changes:
+    - reduce UPS load for train sensor when car is parked and not on rails
+    - cars with circuit sensors report status via signals on their shortwave channel
+  Bugfixes:
+    - recovery code for cars that lock together during bounce-crash
+---------------------------------------------------------------------------------------------------
+Version: 0.1.6
+Date: 09. 08. 2019
+  Changes:
+    - render path segments incrementally over multiple ticks to avoid latency spike for long paths
+---------------------------------------------------------------------------------------------------
+Version: 0.1.5
+Date: 09. 08. 2019
+  Bugfixes:
+    - car channel now persists subsqeuent selections
+---------------------------------------------------------------------------------------------------
+Version: 0.1.4
+Date: 09. 08. 2019
+  Changes:
+    - dispatch car via circuit network sensor (with shortwave dependency)
+---------------------------------------------------------------------------------------------------
+Version: 0.1.3
+Date: 06. 08. 2019
+  Changes:
+    - render path destination circle as visual feedback after click
+    - relax click bounds detection
+---------------------------------------------------------------------------------------------------
+Version: 0.1.2
+Date: 06. 08. 2019
+  Changes:
+    - Move gate sensor behind gates research
+    - Move train sensor behind rail-signals research
+    - Added military dependency for ammo and enemy sensors
+    - Drop adavanced-electronics dependencies (cover by other deps for logistic sensor)

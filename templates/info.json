@@ -1,0 +1,16 @@
+{
+  "name": "autodrive",
+  "version": "VERSION",
+  "factorio_version": "0.17",
+  "title": "Autodrive",
+  "author": "dorfl",
+  "contact": "Dorfl <ceramic.atheist@gmail.com>",
+  "homepage": "https://gitlab.com/aerosuidae/autodrive",
+  "description": "Car equipment for train avoidance, logistic network integration, circuit network connectivity, fuel refill, ammo reload, radio control, enemy targeting, and gate control. Requires a vehicle grid mod.",
+  "dependencies": [
+    "base >= 0.17.35",
+    "shortwave >= 0.1.7",
+    "?VehicleGrid >= 1.1.1",
+    "?markers >= 0.1.1"
+  ]
+}
