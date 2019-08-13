@@ -32,7 +32,7 @@ local function sensor(name, ingredients, prerequisites)
 				width = 1
 			},
 			categories = {
-				"armor",
+				'armor',
 			},
 		},
 		{
@@ -192,8 +192,8 @@ r.animation = {
 	},
 }
 r.selectable_in_game = false
-r.logistic_slots_count = 128
-r.inventory_size = 32
+r.logistic_slots_count = 8
+r.inventory_size = 16
 
 data:extend({ r })
 
@@ -221,7 +221,7 @@ r.animation = {
 	},
 }
 r.selectable_in_game = false
-r.inventory_size = 32
+r.inventory_size = 16
 
 data:extend({ r })
 

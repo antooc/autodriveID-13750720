@@ -25,3 +25,30 @@ end
 if data.raw.car['vehicle-hauler'] then
 	data.raw.car['vehicle-hauler'].guns = { 'vehicle-machine-gun' }
 end
+
+local function sensors_in_equipment_category(category)
+	if data.raw['equipment-category'][category] then
+		for name, proto in pairs(data.raw['battery-equipment']) do
+			if prefixed(name, 'autodrive-') then
+				table.insert(proto.categories, category)
+			end
+		end
+	end
+end
+
+-- Bobs
+sensors_in_equipment_category('vehicle')
+
+local function equipment_grid_allow_category(grid, category)
+	if data.raw["equipment-grid"][grid] then
+		for _, c in ipairs(data.raw["equipment-grid"][grid].equipment_categories) do
+			if c == category then
+				return
+			end
+		end
+		table.insert(data.raw["equipment-grid"][grid].equipment_categories, category)
+	end
+end
+
+-- Angel's Industries
+equipment_grid_allow_category('angels-crawler', 'armor')

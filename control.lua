@@ -1,4 +1,9 @@
 local mod = nil
+local max = math.max
+local min = math.min
+local abs = math.abs
+local ceil = math.ceil
+local floor = math.floor
 
 -- bounce backward after crash speed
 local BOUNCE_SPEED = -5
@@ -223,7 +228,7 @@ end
 
 local function relative_direction(state, pos)
 	local angle = calc_angle(state.car.position, pos)
-	return math.abs(state.car.orientation - angle/360)
+	return abs(state.car.orientation - angle/360)
 end
 
 local function box_size(box)
@@ -231,12 +236,12 @@ local function box_size(box)
 	local rb = box.right_bottom or box[2]
 	local w = (rb.x or rb[1]) - (lt.x or lt[1])
 	local h = (rb.y or rb[2]) - (lt.y or lt[2])
-	return math.max(w, h)
+	return max(w, h)
 end
 
 local function calc_collision_box(state, mul)
 	if not mul then
-		mul = math.max((state.clearance or 1.6) - 0.1, 1.0)
+		mul = max((state.clearance or 1.6) - 0.1, 1.0)
 	end
 	local size = box_size(state.car.prototype.collision_box) * mul
 	return {
@@ -302,6 +307,60 @@ local function has_circuit_sensor(car)
 	return (car.grid and (car.grid.get_contents())['autodrive-circuit-sensor']) and true or false
 end
 
+local function is_special_stack(stack)
+--	if stack and stack.valid and stack.valid_for_read then
+--		local dump = {
+--			is_item_with_tags = stack.is_item_with_tags,
+--			is_item_with_label = stack.is_item_with_label,
+--			label = stack.is_item_with_label and stack.label or "",
+--			is_item_with_entity_data = stack.is_item_with_entity_data,
+--			is_item_with_inventory = stack.is_item_with_inventory,
+--		}
+--		note(serialize(dump))
+--	end
+	return stack and stack.valid and stack.valid_for_read and (
+		(stack.is_item_with_tags and next(stack.tags))
+		or (stack.is_item_with_label and stack.label and stack.label ~= "")
+		or stack.is_item_with_entity_data
+		or stack.is_item_with_inventory
+	)
+end
+
+-- work with stacks to retain info for item-with-tags, item-with-entity-data etc
+local function transfer_stacks(src, dst, indexes)
+	local transfers = {}
+	for i = 1,(indexes and #indexes or #src) do
+		local stack = src[indexes and indexes[i] or i]
+		if stack and stack.valid and stack.valid_for_read then
+			if is_special_stack(stack) then
+				transfers[#transfers+1] = stack
+			else
+				local moved = dst.insert({ name = stack.name, count = stack.count })
+				if moved > 0 then
+					stack.count = stack.count - moved
+				end
+			end
+		end
+	end
+	local t = 1
+	for i = 1,#dst do
+		if t > #transfers then
+			break
+		end
+		local dstack = dst[i]
+		local filter = dst.get_filter(i)
+		if (not filter or filter == transfers[t].name) and dstack and dstack.valid and not dstack.valid_for_read then
+			dstack.transfer_stack(transfers[t])
+			t = t+1
+		end
+	end
+	dst.sort_and_merge()
+end
+
+local function transfer_items(src, dst)
+	transfer_stacks(src, dst)
+end
+
 local function logistic_ready(state)
 	local car = state.car
 	local trunk = car.get_inventory(defines.inventory.car_trunk)
@@ -322,9 +381,7 @@ local function logistic_packup(state)
 		local input = requester.get_inventory(defines.inventory.chest)
 
 		if trunk and trunk.valid then
-			for name,count in pairs(input.get_contents()) do
-				trunk.insert({ name = name, count = count })
-			end
+			transfer_items(input, trunk)
 		end
 
 		requester.destroy()
@@ -335,9 +392,7 @@ local function logistic_packup(state)
 		local output = provider.get_inventory(defines.inventory.chest)
 
 		if trunk and trunk.valid then
-			for name,count in pairs(output.get_contents()) do
-				trunk.insert({ name = name, count = count })
-			end
+			transfer_items(output, trunk)
 		end
 
 		provider.destroy()
@@ -371,11 +426,11 @@ local function logistic_unpack(state)
 		provider = state.provider
 	end
 
-	if requester and requester.valid then
+	if requester and requester.valid and distance(requester.position, car.position) > 1 then
 		requester.teleport(position)
 	end
 
-	if provider and provider.valid then
+	if provider and provider.valid and distance(provider.position, car.position) > 1 then
 		provider.teleport(position)
 	end
 end
@@ -389,50 +444,80 @@ local function logistic_process(state)
 		return
 	end
 
+	if (state.logistic_pause or 0) > game.tick then
+		return
+	end
+
 	local trunk = car.get_inventory(defines.inventory.car_trunk)
 	local input = requester.get_inventory(defines.inventory.chest)
 	local output = provider.get_inventory(defines.inventory.chest)
 
-	local requests = {}
+	local trunk_slot = state.logistic_trunk_slot or 1
+	local trunk_limit = min(#trunk, trunk_slot+10)
 
-	for name,count in pairs(input.get_contents()) do
-		local moved = trunk.insert({ name = name, count = count })
-		if moved > 0 then
-			input.remove({ name = name, count = moved })
+	if trunk_slot == 1 then
+		transfer_items(input, trunk)
+		for i = 1,requester.request_slot_count,1 do
+			requester.clear_request_slot(i)
 		end
+		state.logistic_specials = {}
+		state.logistic_requests = {}
+		state.logistic_exports = {}
 	end
 
-	for i = 1,#trunk,1 do
-		local filter = trunk.get_filter(i)
-		if filter ~= nil then
-			local stack = trunk[i]
-			local count = (stack ~= nil and stack.valid_for_read and stack.count) or 0
-			local shortfall = math.max(0, game.item_prototypes[filter].stack_size - count)
-			if shortfall > 0 then
-				requests[filter] = (requests[filter] or 0) + shortfall
-			end
-		else
-			local stack = trunk[i]
-			local count = (stack ~= nil and stack.valid_for_read and stack.count) or 0
-			if count > 0 and stack.valid then
-				local moved = output.insert({ name = stack.name, count = count })
-				if moved > 0 then
-					stack.count = stack.count - moved
+	local specials = state.logistic_specials
+	local requests = state.logistic_requests
+	local exports = state.logistic_exports
+	local prototypes = game.item_prototypes
+
+	while trunk_slot <= trunk_limit do
+		local stack = trunk[trunk_slot]
+		local filter = trunk.get_filter(trunk_slot)
+		local count = (stack and stack.valid_for_read and stack.count) or 0
+		local special = is_special_stack(stack)
+		if special and not filter then
+			specials[stack.name] = (specials[stack.name] or 0) + 1
+		end
+		if not special or count == 0 then
+			if filter ~= nil then
+				local shortfall = max(0, prototypes[filter].stack_size - count)
+				if shortfall > 0 then
+					requests[filter] = (requests[filter] or 0) + shortfall
+				end
+			else
+				if stack and stack.valid and stack.valid_for_read then
+					exports[#exports+1] = trunk_slot
 				end
 			end
 		end
+		trunk_slot = trunk_slot+1
 	end
 
-	for i = 1,requester.request_slot_count,1 do
-		requester.clear_request_slot(i)
+	if trunk_slot < #trunk then
+		state.logistic_trunk_slot = trunk_slot
+		return
 	end
+
+	state.logistic_trunk_slot = 1
+	state.logistic_pause = game.tick + 180
+
+	for name, count in pairs(specials) do
+		if requests[name] then
+			requests[name] = requests[name] - count
+		end
+	end
+
+	transfer_stacks(trunk, output, exports)
 
 	local i = 1
 	for name,count in pairs(requests) do
 		if i > requester.request_slot_count then
 			break
 		end
-		requester.set_request_slot({ name = name, count = count }, i)
+		if count > 0 then
+			requester.clear_request_slot(i)
+			requester.set_request_slot({ name = name, count = count }, i)
+		end
 		i = i + 1
 	end
 end
@@ -493,7 +578,7 @@ local function request_path(state)
 
 	notify(state, "pathing...")
 
-	state.clearance = math.max((state.clearance or 1.6) - 0.1, 1.0)
+	state.clearance = max((state.clearance or 1.6) - 0.1, 1.0)
 	state.request = state.car.surface.request_path({
 		bounding_box = calc_collision_box(state, state.clearance),
 		collision_mask = state.car.prototype.collision_mask,
@@ -554,7 +639,7 @@ local function tick_car(state)
 
 					if rails then
 						-- on the rails with a potentially moving train nearby! just floor it and hope to get off in time...
-						car.speed = math.max(-150, math.min(150, (car.speed*216)+30)) / 216
+						car.speed = max(-150, min(150, (car.speed*216)+30)) / 216
 						accelerate(state)
 						return
 					end
@@ -574,19 +659,21 @@ local function tick_car(state)
 		end
 	end
 
-	local cron_fuel = game.tick%360 == 0
-	local cron_ammo = game.tick%180 == 0
-	local cron_chart = game.tick%300 == 0
-	local cron_enemy = game.tick%30 == 0
-	local cron_logistic = game.tick%30 == 0
-	local cron_circuit = game.tick%60 == 0
+	local tick = game.tick+(state.id%6)
+
+	local cron_fuel = tick%360 == 0
+	local cron_ammo = tick%180 == 0
+	local cron_chart = tick%300 == 0
+	local cron_enemy = tick%30 == 0
+	local cron_logistic = tick%30 == 0
+	local cron_circuit = tick%60 == 0
 
 	if state.heal then
 		car.health = car.prototype.max_health
 		state.heal = nil
 	end
 
-	if state.sleepy and game.tick%30 ~= 0 then
+	if state.sleepy and tick%30 ~= 0 then
 		return
 	end
 
@@ -625,12 +712,12 @@ local function tick_car(state)
 			local D = (departed > arrived) and (game.tick - departed) or 0
 			local A = (arrived > departed) and (game.tick - arrived) or 0
 			shortwave_signals(state, nil, {
-				['signal-V'] = math.floor(state.car.position.x),
-				['signal-W'] = math.floor(state.car.position.y),
+				['signal-V'] = floor(state.car.position.x),
+				['signal-W'] = floor(state.car.position.y),
 				['signal-D'] = D,
-				['signal-E'] = math.floor(D/60),
+				['signal-E'] = floor(D/60),
 				['signal-A'] = A,
-				['signal-B'] = math.floor(A/60),
+				['signal-B'] = floor(A/60),
 			})
 		end
 
@@ -818,7 +905,7 @@ local function tick_car(state)
 		rendering.destroy(state.segments[1])
 		table.remove(state.segments, 1)
 		table.remove(state.path, 1)
-		state.path_index = math.max(2, (state.path_index or 3)-1)
+		state.path_index = max(2, (state.path_index or 3)-1)
 		brake(state)
 		return
 	end
@@ -826,7 +913,7 @@ local function tick_car(state)
 	-- cheat! everything instant tank-steers when in autodrive
 	car.orientation = calc_angle(car.position, waypoint)/360
 
-	if math.abs(car.speed - speed) < 0.01 then
+	if abs(car.speed - speed) < 0.01 then
 		coast(state)
 	elseif car.speed < speed then
 		accelerate(state)
@@ -899,8 +986,8 @@ local function on_player_selected_area(event)
 
 	if event.item == 'autodrive-control' then
 
-		local dx = math.abs(event.area.right_bottom.x - event.area.left_top.x)
-		local dy = math.abs(event.area.right_bottom.y - event.area.left_top.y)
+		local dx = abs(event.area.right_bottom.x - event.area.left_top.x)
+		local dy = abs(event.area.right_bottom.y - event.area.left_top.y)
 
 		if dx < 0.2 and dy < 0.2 then
 			-- click
