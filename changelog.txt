@@ -1,4 +1,38 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.15
+Date: 19. 08. 2019
+  Bugfixes:
+    - use correct car sprite in the GUI. This caused a crash for, eg, Angel's CAB
+---------------------------------------------------------------------------------------------------
+Version: 0.1.14
+Date: 18. 08. 2019
+  Changes:
+    - add 'Follow player' sensor and tech
+---------------------------------------------------------------------------------------------------
+Version: 0.1.13
+Date: 18. 08. 2019
+  Bugfixes:
+    - fix notfication crash when failing to find non-colliding-position at path target
+---------------------------------------------------------------------------------------------------
+Version: 0.1.12
+Date: 17. 08. 2019
+  Bugfixes:
+    - avoid invalid entity reference trying to unpublish non-published car in GUI
+---------------------------------------------------------------------------------------------------
+Version: 0.1.11
+Date: 17. 08. 2019
+  Changes:
+    - GUI car list
+    - multiplayer car selection fixes
+---------------------------------------------------------------------------------------------------
+Version: 0.1.10
+Date: 16. 08. 2019
+  Bugfixes:
+    - catch nil prototype collision_mask for helicopter
+  Changes:
+    - add sensors to 'vehicle-equipment' for Krastorio
+    - trigger logistics sensor when trunk not yet filtered, for emptying
+---------------------------------------------------------------------------------------------------
 Version: 0.1.9
 Date: 12. 08. 2019
   Bugfixes:

@@ -1,3 +1,5 @@
+require("mod-gui")
+
 local mod = nil
 local max = math.max
 local min = math.min
@@ -13,11 +15,6 @@ local TICKS_CRASH = 30
 
 -- delay between path attempts
 local TICKS_RETRY = 60
-
-local function check_state()
-	mod = global
-	mod.cars = mod.cars or {}
-end
 
 local debug = true
 
@@ -46,6 +43,143 @@ local function distance(a, b)
 	local x = b.x - a.x
 	local y = b.y - a.y
 	return math.sqrt(x*x + y*y)
+end
+
+local function car_owner(state)
+	return (state and state.owner and game.players[state.owner] and game.players[state.owner].valid) and game.players[state.owner] or nil
+end
+
+local function car_owned_by(state, player_index)
+	local owner = car_owner(state)
+	return (owner and owner.index == player_index) and true or false
+end
+
+local function gui_toggle(player)
+	mod_gui.get_frame_flow(player).autodrive_gui.visible = not mod_gui.get_frame_flow(player).autodrive_gui.visible
+end
+
+local function gui_buttons(player)
+	if not mod_gui.get_button_flow(player).autodrive_toggle then
+		mod_gui.get_button_flow(player).add({
+			type = 'sprite-button',
+			name = 'autodrive_toggle',
+			style = 'mod_gui_button',
+			sprite = 'autodrive-control',
+		})
+	end
+	if not mod_gui.get_frame_flow(player).autodrive_gui then
+		local frame = mod_gui.get_frame_flow(player).add({
+			type = 'frame',
+			name = 'autodrive_gui',
+			direction = 'vertical',
+			style = mod_gui.frame_style,
+			caption = { '', 'Autodrive' },
+		})
+		frame.visible = false
+		local tbl = frame.add({
+			type = 'table',
+			name = 'autodrive_cars',
+			direction = 'vertical',
+			column_count = 5,
+		})
+	end
+end
+
+local function gui_value(element)
+	if element then
+		if element.type == 'slider' then
+			return element.slider_value
+		end
+		if element.type == 'checkbox' then
+			return element.state
+		end
+	end
+end
+
+local function gui_car_publish(state)
+	if state.force and state.force.valid then
+		for i=1,#state.force.players do
+			local player = state.force.players[i]
+			if player and player.valid then
+				local cars = mod_gui.get_frame_flow(player).autodrive_gui.autodrive_cars
+				if not cars['autodrive_car_select_'..state.id] then
+					cars.add({
+						type = 'sprite-button',
+						name = 'autodrive_car_select_'..state.id,
+						sprite = 'entity/'..state.car.name,
+						style = 'autodrive_button_off',
+						tooltip = 'select',
+					})
+					cars.add({
+						type = 'sprite-button',
+						name = 'autodrive_car_find_'..state.id,
+						sprite = 'utility/search_icon',
+						style = 'autodrive_button_off',
+						tooltip = 'find',
+					})
+					cars.add({
+						type = 'sprite-button',
+						name = 'autodrive_car_stop_'..state.id,
+						sprite = 'utility/stop',
+						style = 'autodrive_button_off',
+						tooltip = 'stop',
+					})
+					cars.add({
+						type = 'switch',
+						name = 'autodrive_car_follow_'..state.id,
+						switch_state = 'left',
+						tooltip = 'follow player (requires sensor)',
+					})
+					cars.add({
+						type = 'label',
+						name = 'autodrive_car_owner_'..state.id,
+						caption = {'', ''},
+						tooltip = 'owner',
+					})
+				end
+				cars['autodrive_car_select_'..state.id].style = 'autodrive_button_'..((state.selected and car_owned_by(state, player.index)) and 'on' or 'off')
+				cars['autodrive_car_owner_'..state.id].caption = { '', car_owner(state) and car_owner(state).name or '' }
+				cars['autodrive_car_follow_'..state.id].switch_state = state.follow and 'right' or 'left'
+			end
+		end
+	end
+end
+
+local function gui_car_unpublish(state)
+	if state.force and state.force.valid then
+		for i=1,#state.force.players do
+			local player = state.force.players[i]
+			if player and player.valid then
+				local cars = mod_gui.get_frame_flow(player).autodrive_gui.autodrive_cars
+				if cars['autodrive_car_select_'..state.id] then
+					cars['autodrive_car_select_'..state.id].destroy()
+					cars['autodrive_car_find_'..state.id].destroy()
+					cars['autodrive_car_stop_'..state.id].destroy()
+					cars['autodrive_car_owner_'..state.id].destroy()
+					cars['autodrive_car_follow_'..state.id].destroy()
+				end
+			end
+		end
+	end
+end
+
+function player_control(player)
+	if player.get_item_count('autodrive-control') > 0 then
+		player.clean_cursor()
+		player.remove_item({ name = 'autodrive-control', count = 1 })
+		player.cursor_stack.set_stack({ name = 'autodrive-control' })
+	end
+end
+
+local function check_state()
+	mod = global
+	mod.cars = mod.cars or {}
+	for i=1,#game.players do
+		local player = game.players[i]
+		if player and player.valid then
+			gui_buttons(player)
+		end
+	end
 end
 
 local function notify(state, msg)
@@ -307,17 +441,11 @@ local function has_circuit_sensor(car)
 	return (car.grid and (car.grid.get_contents())['autodrive-circuit-sensor']) and true or false
 end
 
+local function has_follow_sensor(car)
+	return (car.grid and (car.grid.get_contents())['autodrive-follow-sensor']) and true or false
+end
+
 local function is_special_stack(stack)
---	if stack and stack.valid and stack.valid_for_read then
---		local dump = {
---			is_item_with_tags = stack.is_item_with_tags,
---			is_item_with_label = stack.is_item_with_label,
---			label = stack.is_item_with_label and stack.label or "",
---			is_item_with_entity_data = stack.is_item_with_entity_data,
---			is_item_with_inventory = stack.is_item_with_inventory,
---		}
---		note(serialize(dump))
---	end
 	return stack and stack.valid and stack.valid_for_read and (
 		(stack.is_item_with_tags and next(stack.tags))
 		or (stack.is_item_with_label and stack.label and stack.label ~= "")
@@ -365,7 +493,7 @@ local function logistic_ready(state)
 	local car = state.car
 	local trunk = car.get_inventory(defines.inventory.car_trunk)
 	return trunk
-		and trunk.is_filtered()
+		--and trunk.is_filtered()
 		and car.speed < 0.1
 		and car.surface.find_logistic_network_by_position(car.position, car.force) ~= nil
 end
@@ -523,6 +651,7 @@ local function logistic_process(state)
 end
 
 local function remove_car(state)
+	gui_car_unpublish(state)
 	state.channel = nil
 	shortwave_state(state)
 	remove_path(state)
@@ -534,8 +663,11 @@ local function reset_car(state)
 	mod.cars[state.id] = {
 		id = state.id,
 		car = state.car,
+		force = state.car.force,
 		heal = state.heal,
+		owner = state.owner,
 		selected = state.selected,
+		follow = state.follow,
 		leader = state.leader,
 		channel = state.channel,
 		link = state.link,
@@ -554,6 +686,7 @@ local function reset_car(state)
 		train_sensor = has_train_sensor(state.car),
 		logistic_sensor = has_logistic_sensor(state.car),
 		circuit_sensor = has_circuit_sensor(state.car),
+		follow_sensor = has_follow_sensor(state.car),
 	}
 	state = mod.cars[state.id]
 	state.car.speed = 0
@@ -571,7 +704,7 @@ local function request_path(state)
 	state.goal = state.car.surface.find_non_colliding_position(state.car.name, state.goal, step*3, step)
 
 	if not state.goal then
-		notify("no space!")
+		notify(state, "no space at target")
 		reset_car(state)
 		return
 	end
@@ -581,7 +714,7 @@ local function request_path(state)
 	state.clearance = max((state.clearance or 1.6) - 0.1, 1.0)
 	state.request = state.car.surface.request_path({
 		bounding_box = calc_collision_box(state, state.clearance),
-		collision_mask = state.car.prototype.collision_mask,
+		collision_mask = state.car.prototype.collision_mask or {},
 		start = state.car.position,
 		goal = state.goal,
 		force = state.car.force,
@@ -667,6 +800,8 @@ local function tick_car(state)
 	local cron_enemy = tick%30 == 0
 	local cron_logistic = tick%30 == 0
 	local cron_circuit = tick%60 == 0
+	local cron_publish = tick%30 == 0
+	local cron_follow = tick%30 == 0
 
 	if state.heal then
 		car.health = car.prototype.max_health
@@ -675,6 +810,11 @@ local function tick_car(state)
 
 	if state.sleepy and tick%30 ~= 0 then
 		return
+	end
+
+	if cron_publish then
+		state.force = car.force
+		gui_car_publish(state)
 	end
 
 	if cron_chart then
@@ -856,6 +996,29 @@ local function tick_car(state)
 		notify(state, "pathing...")
 	end
 
+	if cron_follow
+		and state.follow_sensor
+		and not state.path
+		and not state.request
+		and state.follow
+	then
+		local player = game.players[state.follow]
+		if player
+			and player.valid
+			and player.character
+			and player.character.valid
+			and distance(player.character.position, state.car.position) > (player.mod_settings['autodrive-follow-proximity'].value or 20)
+		then
+			state.path = nil
+			state.goal = player.character.position
+			state.radius = 1
+			state.clearance = nil
+			render_target(state)
+			request_path(state)
+			return
+		end
+	end
+
 	if not state.path then
 		return
 	end
@@ -976,6 +1139,75 @@ local function on_script_path_request_finished(event)
 	end
 end
 
+local function select_cars(player_index, cars, channel)
+
+	if channel then
+		for id, state in pairs(mod.cars) do
+			if state.channel == channel then
+				state.channel = nil
+			end
+		end
+	end
+
+	local ourcars = {}
+	for _, car in ipairs(cars) do
+		local state = mod.cars[car.unit_number]
+		if not car_owner(state) or car_owned_by(state, player_index) then
+			ourcars[#ourcars+1] = car
+		end
+	end
+
+	for _, state in pairs(mod.cars) do
+		if state and state.selected and (not car_owner(state) or car_owned_by(state, player_index)) then
+			if type(state.selected) ~= 'boolean' then
+				rendering.destroy(state.selected)
+			end
+			state.owner = nil
+			state.selected = nil
+			gui_car_publish(state)
+		end
+	end
+
+	for i, car in ipairs(ourcars) do
+		local id = car.unit_number
+		mod.cars[id] = mod.cars[id] or {
+			id = id,
+			car = car,
+			channel = channel,
+			ammo_sensor = has_ammo_sensor(car),
+			fuel_sensor = has_fuel_sensor(car),
+			gate_sensor = has_gate_sensor(car),
+			enemy_sensor = has_enemy_sensor(car),
+			train_sensor = has_train_sensor(car),
+			logistic_sensor = has_logistic_sensor(car),
+			circuit_sensor = has_circuit_sensor(car),
+			follow_sensor = has_follow_sensor(car),
+		}
+		local state = mod.cars[id]
+		if channel then
+			state.channel = channel
+		end
+		state.leader = i == 1
+		state.owner = player_index
+		if state.follow then
+			state.follow = player_index
+		end
+		state.force = car.force
+		state.selected = rendering.draw_text({
+			text = { '', state.channel or '@' },
+			alignment = 'center',
+			color = {r = 0.3, g = 0.7, b = 0.3},
+			target = car,
+			surface = car.surface,
+			forces = { car.force },
+		})
+		notify(state, "selected")
+		gui_car_publish(state)
+	end
+
+	return #ourcars
+end
+
 local function on_player_selected_area(event)
 
 	if not prefixed(event.item, 'autodrive-') then
@@ -992,7 +1224,7 @@ local function on_player_selected_area(event)
 		if dx < 0.2 and dy < 0.2 then
 			-- click
 			for _, state in pairs(mod.cars) do
-				if state.selected then
+				if state.selected and car_owned_by(state, event.player_index) then
 					state.path = nil
 					state.goal = event.area.left_top
 					state.manual_goal = true
@@ -1017,50 +1249,7 @@ local function on_player_selected_area(event)
 				end
 			end
 			if #cars > 0 then
-				if channel then
-					for id, state in pairs(mod.cars) do
-						if state.channel == channel then
-							state.channel = nil
-						end
-					end
-				end
-				for _, state in pairs(mod.cars) do
-					if state.selected then
-						if type(state.selected) ~= 'boolean' then
-							rendering.destroy(state.selected)
-						end
-						state.selected = nil
-					end
-				end
-				for i, car in ipairs(cars) do
-					local id = car.unit_number
-					mod.cars[id] = mod.cars[id] or {
-						id = id,
-						car = car,
-						channel = channel,
-						ammo_sensor = has_ammo_sensor(car),
-						fuel_sensor = has_fuel_sensor(car),
-						gate_sensor = has_gate_sensor(car),
-						enemy_sensor = has_enemy_sensor(car),
-						train_sensor = has_train_sensor(car),
-						logistic_sensor = has_logistic_sensor(car),
-						circuit_sensor = has_circuit_sensor(car),
-					}
-					local state = mod.cars[id]
-					if channel then
-						state.channel = channel
-					end
-					state.leader = i == 1
-					state.selected = rendering.draw_text({
-						text = { '', state.channel or '@' },
-						alignment = 'center',
-						color = {r = 0.7, g = 0.7, b = 0.3},
-						target = car,
-						surface = car.surface,
-						forces = { car.force },
-					})
-					notify(state, "selected")
-				end
+				select_cars(event.player_index, cars, channel)
 			end
 		end
 	end
@@ -1134,6 +1323,7 @@ local function recheck_grid_sensors(grid)
 				mod.cars[id] = mod.cars[id] or {
 					id = id,
 					car = car,
+					force = car.force,
 				}
 				local state = mod.cars[id]
 				state.ammo_sensor = has_ammo_sensor(state.car)
@@ -1143,6 +1333,8 @@ local function recheck_grid_sensors(grid)
 				state.train_sensor = has_train_sensor(state.car)
 				state.logistic_sensor = has_logistic_sensor(state.car)
 				state.circuit_sensor = has_circuit_sensor(state.car)
+				state.follow_sensor = has_follow_sensor(state.car)
+				gui_car_publish(state)
 				break
 			end
 		end
@@ -1182,6 +1374,76 @@ local function attach_events()
 	script.on_event(defines.events.on_player_removed_equipment, on_player_removed_equipment)
 	script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_entity}, on_create)
 	script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_mined_entity, defines.events.on_entity_died}, on_remove)
+	script.on_event(defines.events.on_player_created, function(event)
+		check_state()
+	end)
+	script.on_event(defines.events.on_gui_click, function(event)
+		check_state()
+		local player = game.players[event.player_index]
+		if prefixed(event.element.name, "autodrive") then
+			if event.element.name == "autodrive_toggle" then
+				gui_toggle(player)
+				return
+			end
+			if prefixed(event.element.name, "autodrive_car_select_") then
+				local id = tonumber(string.sub(event.element.name, #'autodrive_car_select_'+1))
+				local state = mod.cars[id]
+				if state and state.car and state.car.valid then
+					if select_cars(event.player_index, {state.car}) > 0 then
+						player_control(player)
+					end
+				end
+				return
+			end
+			if prefixed(event.element.name, "autodrive_car_find_") then
+				local id = tonumber(string.sub(event.element.name, #'autodrive_car_find_'+1))
+				local state = mod.cars[id]
+				if state and state.car and state.car.valid then
+					notify(state, "here")
+					player.zoom_to_world(state.car.position, 0.5)
+				end
+				return
+			end
+			if prefixed(event.element.name, "autodrive_car_stop_") then
+				local id = tonumber(string.sub(event.element.name, #'autodrive_car_stop_'+1))
+				local state = mod.cars[id]
+				if state and state.car and state.car.valid then
+					notify(state, "stop")
+					reset_car(state)
+					return
+				end
+				return
+			end
+		end
+	end)
+	script.on_event(defines.events.on_gui_switch_state_changed, function(event)
+		check_state()
+		local player = game.players[event.player_index]
+		if prefixed(event.element.name, "autodrive") then
+			if prefixed(event.element.name, "autodrive_car_follow_") then
+				local id = tonumber(string.sub(event.element.name, #'autodrive_car_follow_'+1))
+				local state = mod.cars[id]
+				if state and state.car and state.car.valid then
+					local switch = mod_gui.get_frame_flow(player).autodrive_gui.autodrive_cars['autodrive_car_follow_'..id]
+					if not state.follow_sensor then
+						notify(state, "missing follow sensor...")
+						state.follow = nil
+						return
+					end
+					if switch and switch.switch_state == 'right' then
+						notify(state, "follow")
+						state.follow = state.owner or event.player_index
+					else
+						notify(state, "stay")
+						state.follow = nil
+					end
+					reset_car(state)
+					return
+				end
+				return
+			end
+		end
+	end)
 end
 
 local function attach_interfaces()

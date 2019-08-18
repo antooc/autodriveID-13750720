@@ -108,6 +108,11 @@ sensor('circuit',
 	{ "automobilism", "autodriving", "circuit-network" }
 )
 
+sensor('follow',
+	{{ type = "item", name = "constant-combinator", amount = 1 }},
+	{ "automobilism" }
+)
+
 data:extend({
 	{
 		type = "selection-tool",
@@ -291,3 +296,29 @@ data:extend({
 		corpse = "small-remnants",
 	},
 })
+
+data:extend({
+	{
+		type = 'sprite',
+		name = 'autodrive-control',
+    filename = '__autodrive__/control.png',
+    priority = 'extra-high-no-scale',
+    flags = {
+      'no-crop'
+    },
+    height = 32,
+    width = 32,
+  },
+})
+
+data.raw['gui-style'].default.autodrive_button_off = {
+	type = "button_style",
+	parent = "shortcut_bar_button",
+	padding = 4,
+}
+
+data.raw['gui-style'].default.autodrive_button_on = {
+	type = "button_style",
+	parent = "shortcut_bar_button_green",
+	padding = 4,
+}
