@@ -1007,6 +1007,7 @@ local function tick_car(state)
 			and player.valid
 			and player.character
 			and player.character.valid
+			and player.surface == state.car.surface
 			and distance(player.character.position, state.car.position) > (player.mod_settings['autodrive-follow-proximity'].value or 20)
 		then
 			state.path = nil

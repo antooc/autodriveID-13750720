@@ -178,6 +178,7 @@ r.name = "autodrive-requester"
 r.place_result = "autodrive-requester"
 r.collision_mask = {}
 r.minable = nil
+r.next_upgrade = nil
 r.flags = {
 	"player-creation",
 	"not-rotatable",
@@ -207,6 +208,7 @@ r.name = "autodrive-provider"
 r.place_result = "autodrive-provider"
 r.collision_mask = {}
 r.minable = nil
+r.next_upgrade = nil
 r.flags = {
 	"player-creation",
 	"not-rotatable",
